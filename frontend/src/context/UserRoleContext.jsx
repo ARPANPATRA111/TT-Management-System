@@ -1,16 +1,25 @@
-import { createContext, useContext, useState,useEffect } from 'react';
+import { createContext, useContext, useState } from 'react';
 
 const UserRoleContext = createContext();
 
 export const UserRoleProvider = ({ children }) => {
   const [userRole, setUserRole] = useState(() => {
-    return localStorage.getItem('userRole') || null;
+    const storedRole = localStorage.getItem('userRole');
+    // Convert to number if valid, otherwise null
+    return storedRole ? Number(storedRole) : null;
   });
 
-  // Function to fetch user role based on username
-  const fetchUserRole = async (role) => {
-    setUserRole(role);
-    localStorage.setItem('userRole', role);
+  const fetchUserRole = (role_id) => {
+    // Ensure role_id is a valid number
+    const roleId = Number(role_id);
+    if (!isNaN(roleId)) {
+      setUserRole(roleId);
+      localStorage.setItem('userRole', roleId.toString());
+    } else {
+      console.error('Invalid role_id received:', role_id);
+      setUserRole(null);
+      localStorage.removeItem('userRole');
+    }
   };
 
   const clearUserRole = () => {
@@ -19,11 +28,10 @@ export const UserRoleProvider = ({ children }) => {
   };
 
   return (
-    <UserRoleContext.Provider value={{ userRole, fetchUserRole }}>
+    <UserRoleContext.Provider value={{ userRole, fetchUserRole, clearUserRole }}>
       {children}
     </UserRoleContext.Provider>
   );
 };
 
 export const useUserRole = () => useContext(UserRoleContext);
-

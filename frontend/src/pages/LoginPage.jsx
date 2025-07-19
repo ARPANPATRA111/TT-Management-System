@@ -27,7 +27,7 @@ const LoginPage = () => {
       {/* Left-Section*/}
 <div className="w-1/2 h-full flex flex-col items-center justify-center bg-[linear-gradient(135deg,#1e3a8a,#0f766e)] max-[680px]:w-full max-[680px]:h-1/4 max-[680px]:flex-row">
   <div className="items-center text-center">
-    <img 
+    <img
       src={logo}
       alt="IIPS-LOGO"
       className="w-55 h-55 max-[680px]:w-20 max-[680px]:h-20"
@@ -106,8 +106,8 @@ const LoginPage = () => {
 
           <div className="mt-6 text-center text-sm text-gray-500">
             <p className="mb-2 max-[680px]:mb-1">demo accounts</p>
-            <p>Admin: admin / admin123</p>
-            <p>User: user / user123</p>
+            <p>Admin: admin@example.com / password123</p>
+            <p>User: normal@example.com / password123</p>
           </div>
 
           <div className="text-center mt-8 text-xs text-gray-400">
