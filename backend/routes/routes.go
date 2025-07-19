@@ -59,6 +59,18 @@ func registerFacultyRoutes(r *gin.RouterGroup, db *gorm.DB) {
 	r.GET("/session", controllers.All[models.Session](db))
 	r.GET("/session/:id", controllers.Get[models.Session](db))
 
+	r.GET("/section", controllers.All[models.Section](db))
+	r.GET("/section/:id", controllers.Get[models.Section](db))
+
+	r.GET("/timetable", controllers.All[models.Timetable](db))
+	r.GET("/timetable/:id", controllers.Get[models.Timetable](db))
+
+	r.GET("/timeslot", controllers.All[models.Timeslot](db))
+	r.GET("/timeslot/:id", controllers.Get[models.Timeslot](db))
+
+	r.GET("/sessionnote", controllers.All[models.SessionNote](db))
+	r.GET("/sessionnote/:id", controllers.Get[models.SessionNote](db))
+
 	r.GET("/calendar", controllers.GetCalendarSummaryByMonth)
 	r.GET("/calendar/day", controllers.GetLectureDetailsByDate)
 }
@@ -98,6 +110,26 @@ func registerAdminRoutes(r *gin.RouterGroup, db *gorm.DB) {
 	r.POST("/session", controllers.Create[models.Session](db))
 	r.PUT("/session/:id", controllers.Update[models.Session](db))
 	r.DELETE("/session/:id", controllers.Delete[models.Session](db))
+
+	// Section
+	r.POST("/section", controllers.Create[models.Section](db))
+	r.PUT("/section/:id", controllers.Update[models.Section](db))
+	r.DELETE("/section/:id", controllers.Delete[models.Section](db))
+
+	// Timetable
+	r.POST("/timetable", controllers.Create[models.Timetable](db))
+	r.PUT("/timetable/:id", controllers.Update[models.Timetable](db))
+	r.DELETE("/timetable/:id", controllers.Delete[models.Timetable](db))
+
+	// Timeslot
+	r.POST("/timeslot", controllers.Create[models.Timeslot](db))
+	r.PUT("/timeslot/:id", controllers.Update[models.Timeslot](db))
+	r.DELETE("/timeslot/:id", controllers.Delete[models.Timeslot](db))
+
+	// SessionNote
+	r.POST("/sessionnote", controllers.Create[models.SessionNote](db))
+	r.PUT("/sessionnote/:id", controllers.Update[models.SessionNote](db))
+	r.DELETE("/sessionnote/:id", controllers.Delete[models.SessionNote](db))
 }
 
 func registerSuperAdminRoutes(r *gin.RouterGroup, db *gorm.DB) {
