@@ -31,7 +31,7 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const login = async (username, password) => {
+  const login = async (email, passwordhash) => {
     try {
       const res = await fetch("http://localhost:8080/api/v1/login", {
         method: "POST",
@@ -39,20 +39,14 @@ export const AuthProvider = ({ children }) => {
           "Content-Type": "application/json",
         },
         credentials: "include",
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ email, passwordhash }),
       });
-      // setUser({ username: res.data.username, role: res.data.role });
-      // if (res.data.role === "Admin") {
-      //   navigate("/dashboard");
-      // } else {
-      //   navigate("/faculty-dashboard");
-      // }
 
       const data = res.data;
       console.log(data, res.status);
 
       if (res.status === 200) {
-        await fetchUserRole(username);
+        await fetchUserRole(email);
         navigate("/dashboard");
       }
     } catch (err) {
@@ -80,10 +74,6 @@ export const AuthProvider = ({ children }) => {
       console.error("Logout error ss", err);
     }
   };
-
-  // useEffect(() => {
-  //   validateSession();
-  // }, []);
 
   return (
     <AuthContext.Provider
