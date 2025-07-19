@@ -30,7 +30,8 @@ const ManageCourses = () => {
         name: "",
         code: ""
     });
- const { userRole } = useUserRole();
+   const { userRole } = useUserRole();
+  //  console.log("User Role:", userRole);
     const navigate = useNavigate();
 
     const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
@@ -347,9 +348,9 @@ const ManageCourses = () => {
             <div className="px-4 sm:px-6 lg:px-8 pt-6 pb-4">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div>
-                        <Heading text={userRole === "admin" ? "Manage Courses" : "View Courses"} />
+                        <Heading text={userRole === 3 || userRole === 2 ? "Manage Courses" : "View Courses"} />
       <p className="text-slate-600 mt-2 text-sm sm:text-base">
-        {userRole === "admin" ? "Add, edit, and manage academic courses" : "View academic courses"}
+        {userRole === 3 || userRole === 2 ? "Add, edit, and manage academic courses" : "View academic courses"}
       </p>
                     </div>
                     {/* <button
@@ -377,7 +378,7 @@ const ManageCourses = () => {
                             </div>
                         </div>
                         <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-                          {userRole === 'admin' && (
+                          {(userRole === 3 || userRole === 2) && (
                             <div className="relative w-full sm:w-64">
                                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                                     <FaSearch className="text-gray-400" />
@@ -391,7 +392,7 @@ const ManageCourses = () => {
                                 />
                             </div>
                           )}
-                            {userRole === "admin" && (
+                            {(userRole === 3 || userRole === 2) && (
                             <button
                                 className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white px-4 py-2 rounded-lg transition-all duration-200 flex items-center justify-center space-x-2 shadow-sm font-medium"
                                 onClick={handleAddNewCourse}
@@ -410,7 +411,7 @@ const ManageCourses = () => {
                                 <tr className="bg-slate-800 text-white">
                                     <th className="px-6 py-4 text-left font-semibold w-1/2">Course Code</th>
                                     <th className="px-6 py-4 text-left font-semibold w-1/4">Course Name</th>
-                                     {userRole === "admin" && (
+                                     {(userRole === 3 || userRole === 2) && (
                                     <th className="px-6 py-4 text-center font-semibold w-1/4">Actions</th>
                                     )}
                                 </tr>
@@ -429,7 +430,7 @@ const ManageCourses = () => {
                                        <td className="px-6 py-4  w-1/4">
                                             <div className="font-medium text-slate-800">{course.Name}</div>
                                         </td>
-                                         {userRole == "admin" && (
+                                         {(userRole === 3 || userRole === 2) && (
                                         <td className="px-6 py-4 w-1/4">
                                             <div className="flex justify-center space-x-2">
                                               <>
@@ -468,7 +469,7 @@ const ManageCourses = () => {
                                     <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm font-mono font-medium">
                                         {course.Code}
                                     </span>
-                                     {userRole === "admin" && (
+                                     {(userRole === 3 || userRole === 2) && (
                                     <div className="flex space-x-2">
                                         <button
                                             className="bg-emerald-500 hover:bg-emerald-600 text-white p-2 rounded-lg transition-colors duration-200"

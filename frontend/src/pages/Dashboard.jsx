@@ -23,16 +23,19 @@ const Dashboard = () => {
     faculties: 0,
     subjects: 0,
     rooms: 0,
-    courses: 0
+    courses: 0,
+    batch:0
   });
     const { userRole } = useUserRole();
+    console.log("User Role:", userRole);
 
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
   const API_ENDPOINTS = {
     FACULTY_COUNT: `${API_BASE_URL}/faculty`,
     SUBJECT_COUNT: `${API_BASE_URL}/subject`,
     ROOM_COUNT: `${API_BASE_URL}/room`,
-    COURSE_COUNT: `${API_BASE_URL}/course`
+    COURSE_COUNT: `${API_BASE_URL}/course`,
+    BATCH_COUNT: `${API_BASE_URL}/batch`
   };
 
   // Function To Check Authentication
@@ -101,7 +104,8 @@ const Dashboard = () => {
         fetch(API_ENDPOINTS.FACULTY_COUNT, { credentials: "include" }),
         fetch(API_ENDPOINTS.SUBJECT_COUNT, { credentials: "include" }),
         fetch(API_ENDPOINTS.ROOM_COUNT, { credentials: "include" }),
-        fetch(API_ENDPOINTS.COURSE_COUNT, { credentials: "include" })
+        fetch(API_ENDPOINTS.COURSE_COUNT, { credentials: "include" }),
+        fetch(API_ENDPOINTS.BATCH_COUNT, { credentials: "include" })
       ]);
 
       // Check for authentication errors in responses
@@ -117,11 +121,12 @@ const Dashboard = () => {
       }
 
       // Parse all responses
-      const [facultyData, subjectData, roomData, courseData] = await Promise.all([
+      const [facultyData, subjectData, roomData, courseData, batchData] = await Promise.all([
         responses[0].json(),
         responses[1].json(),
         responses[2].json(),
-        responses[3].json()
+        responses[3].json(),
+        responses[4].json()
       ]);
 
       // Handle both array responses and object responses with count property
@@ -133,6 +138,13 @@ const Dashboard = () => {
         }
         return 0;
       };
+      console.log("Counts fetched successfully:", {
+        faculties: getCount(facultyData),
+        subjects: getCount(subjectData),
+        rooms: getCount(roomData),
+        courses: getCount(courseData),
+        batch: getCount(batchData)
+      });
 
       setCounts({
         faculties: getCount(facultyData),
@@ -221,8 +233,8 @@ const Dashboard = () => {
       route: "/create-timetable",
     },
     {
-      title: userRole === "admin" ? "Manage Courses" : "View Courses",
-      description: userRole === "admin"
+      title: userRole === 3 || userRole === 2 ? "Manage Courses" : "View Courses",
+      description: userRole === 3 || userRole === 2
     ? "Add, edit or remove Courses" : "View existing courses",
       icon: FaEdit,
       iconColor: "bg-amber-500",
@@ -230,8 +242,8 @@ const Dashboard = () => {
       route: "/manage-courses",
     },
     {
-      title: userRole === "admin" ? "Manage Subjects" : "View Subjects",
-      description: userRole === "admin"
+      title: userRole === 3 || userRole === 2 ? "Manage Subjects" : "View Subjects",
+      description: userRole === 3 || userRole === 2
     ? "Add, edit or remove subjects" : "View subjects information",
       icon: FaBook,
       iconColor: "bg-orange-500",
@@ -239,8 +251,8 @@ const Dashboard = () => {
       route: "/manage-subjects",
     },
     {
-      title: userRole === "admin" ? "Manage Rooms" : "View Rooms",
-      description: userRole === "admin"
+      title: userRole === 3 || userRole === 2 ? "Manage Rooms" : "View Rooms",
+      description: userRole === 3 || userRole === 2
     ? "Configure room availability" : "View room availability",
       icon: FaDoorOpen,
       iconColor: "bg-purple-500",
@@ -248,8 +260,8 @@ const Dashboard = () => {
       route: "/manage-rooms",
     },
     {
-      title: userRole === "admin" ? "Manage Faculty" : "View Faculty",
-      description: userRole === "admin"
+      title: userRole === 3 || userRole === 2 ? "Manage Faculty" : "View Faculty",
+      description: userRole === 3 || userRole === 2
     ? "Handle faculty information" : "View faculty information",
       icon: FaUserTie,
       iconColor: "bg-indigo-500",
@@ -257,8 +269,8 @@ const Dashboard = () => {
       route: "/manage-faculty",
     },
     {
-      title: userRole === "admin" ? "Manage Batches" : "View Batches",
-      description: userRole === "admin"
+      title: userRole === 3 || userRole === 2 ? "Manage Batches" : "View Batches",
+      description: userRole === 3 || userRole === 2
     ? "Organize batch details and schedules" : "View batch details and schedules",
       icon: FaLayerGroup,
       iconColor: "bg-green-500",
@@ -267,7 +279,6 @@ const Dashboard = () => {
     },
   ];
   const facultyCards = [
-
     {
       title: "View All Timetables",
       description: "Access class-specific timetables",
@@ -277,8 +288,8 @@ const Dashboard = () => {
       route: "/class-timetable",
     },
     {
-      title: userRole === "admin" ? "Manage Courses" : "View Courses",
-      description: userRole === "admin"
+      title: userRole === 3 || userRole === 2 ? "Manage Courses" : "View Courses",
+      description: userRole === 3 || userRole === 2
     ? "Add, edit or remove Courses" : "View existing courses",
       icon: FaEdit,
       iconColor: "bg-amber-500",
@@ -286,8 +297,8 @@ const Dashboard = () => {
       route: "/manage-courses",
     },
     {
-      title: userRole === "admin" ? "Manage Subjects" : "View Subjects",
-      description: userRole === "admin"
+      title: userRole === 3 || userRole === 2 ? "Manage Subjects" : "View Subjects",
+      description: userRole === 3 || userRole === 2
     ? "Add, edit or remove subjects" : "View subjects information",
       icon: FaBook,
       iconColor: "bg-orange-500",
@@ -295,8 +306,8 @@ const Dashboard = () => {
       route: "/manage-subjects",
     },
     {
-      title: userRole === "admin" ? "Manage Rooms" : "View Rooms",
-      description: userRole === "admin"
+      title: userRole === 3 || userRole === 2 ? "Manage Rooms" : "View Rooms",
+      description: userRole === 3 || userRole === 2
     ? "Configure room availability" : "View room availability",
       icon: FaDoorOpen,
       iconColor: "bg-purple-500",
@@ -304,8 +315,8 @@ const Dashboard = () => {
       route: "/manage-rooms",
     },
     {
-      title: userRole === "admin" ? "Manage Faculty" : "View Faculty",
-      description: userRole === "admin"
+      title: userRole === 3 || userRole === 2 ? "Manage Faculty" : "View Faculty",
+      description: userRole === 3 || userRole === 2
     ? "Handle faculty information" : "View faculty information",
       icon: FaUserTie,
       iconColor: "bg-indigo-500",
@@ -313,8 +324,8 @@ const Dashboard = () => {
       route: "/manage-faculty",
     },
     {
-      title: userRole === "admin" ? "Manage Batches" : "View Batches",
-      description: userRole === "admin"
+      title: userRole === 3 || userRole === 2 ? "Manage Batches" : "View Batches",
+      description: userRole === 3 || userRole === 2
     ? "Organize batch details and schedules" : "View batch details and schedules",
       icon: FaLayerGroup,
       iconColor: "bg-green-500",
@@ -409,7 +420,7 @@ const Dashboard = () => {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-4 sm:gap-6">
-          {userRole === "admin" ? actionCards.map((card, index) => (
+          {userRole === 3 || userRole === 2 ? actionCards.map((card, index) => (
             <div
               key={index}
               onClick={() => navigate(card.route)}
