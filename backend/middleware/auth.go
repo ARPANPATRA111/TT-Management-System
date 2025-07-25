@@ -3,6 +3,8 @@ package middleware
 import (
 	"net/http"
 	"slices"
+	"tms-server/config"
+	"tms-server/models"
 	"tms-server/utils"
 
 	"github.com/gin-gonic/gin"
@@ -24,6 +26,13 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
+		var user models.User
+		if err := config.DB.Where("email = ?", claims.Email).First(&user).Error; err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "User associated with token not found"})
+			c.Abort()
+			return
+		}
+		c.Set("user", user)
 		c.Set("email", claims.Email)
 		c.Set("role", claims.Role)
 		c.Next()
@@ -46,12 +55,12 @@ func RoleAuthMiddleware(allowedRoles ...string) gin.HandlerFunc {
 			return
 		}
 
-		if slices.Contains(allowedRoles, roleStr) {
-			c.Next()
+		if !slices.Contains(allowedRoles, roleStr) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions for this action"})
+			c.Abort()
 			return
 		}
 
-		c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions"})
-		c.Abort()
+		c.Next()
 	}
 }

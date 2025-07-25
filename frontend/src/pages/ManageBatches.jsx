@@ -33,7 +33,8 @@ const ManageBatches = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
-  const [addingBatch, setAddingBatch] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [newBatch, setNewBatch] = useState({
     id: "",
@@ -42,7 +43,6 @@ const ManageBatches = () => {
     Sections: [{ Name: "" }],
   });
   const { userRole } = useUserRole();
-
   const navigate = useNavigate();
 
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
@@ -52,72 +52,75 @@ const ManageBatches = () => {
     ADD_BATCH: `${API_BASE_URL}/batch`,
     UPDATE_BATCH: (id) => `${API_BASE_URL}/batch/${id}`,
     DELETE_BATCH: (id) => `${API_BASE_URL}/batch/${id}`,
+    ADD_SECTION: `${API_BASE_URL}/section`,
+    GET_SECTIONS: `${API_BASE_URL}/section`,
+    UPDATE_SECTION: (id) => `${API_BASE_URL}/section/${id}`,
+    DELETE_SECTION: (id) => `${API_BASE_URL}/section/${id}`,
   };
 
-  const fetchCourses = async () => {
-    try {
-      const response = await fetch(API_ENDPOINTS.GET_COURSES, { credentials: "include" });
-      if (!response.ok) throw new Error("Failed to fetch courses");
-      const data = await response.json();
-      setCourses(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error("Error fetching courses:", err);
-      toast.error("Could not load courses for the dropdown.");
-    }
-  };
-
-  const fetchBatches = async () => {
+  const fetchData = async () => {
     try {
       setLoading(true);
       setError(null);
-      const [batchesResponse] = await Promise.all([
-        fetch(API_ENDPOINTS.GET_BATCHES, { method: "GET", headers: { "Content-Type": "application/json" }, credentials: "include" }),
-        fetchCourses(),
+      const [batchesResponse, coursesResponse, sectionsResponse] = await Promise.all([
+        fetch(API_ENDPOINTS.GET_BATCHES, { credentials: "include" }),
+        fetch(API_ENDPOINTS.GET_COURSES, { credentials: "include" }),
+        fetch(API_ENDPOINTS.GET_SECTIONS, { credentials: "include" }),
       ]);
       if (!batchesResponse.ok) throw new Error(`HTTP error! status: ${batchesResponse.status}`);
+      if (!coursesResponse.ok) throw new Error(`HTTP error! status: ${coursesResponse.status}`);
+      if (!sectionsResponse.ok) throw new Error(`HTTP error! status: ${sectionsResponse.status}`);
+      // Parse responses
       const batchesData = await batchesResponse.json();
+      const coursesData = await coursesResponse.json();
+      const sectionsData = await sectionsResponse.json();
+      console.log('Fetched batches:', batchesData);
+      console.log('Fetched courses:', coursesData);
+      console.log('Fetched sections:', sectionsData);
       if (!Array.isArray(batchesData)) {
         setBatches([]);
         setFilteredBatches([]);
-        return;
+      } else {
+        const formattedBatches = batchesData.map((batch) => ({
+          id: batch.ID,
+          CourseID: batch.CourseID,
+          EntryYear: batch.EntryYear,
+          Sections: batch.Sections || [],
+        }));
+        setBatches(formattedBatches);
+        console.log('Fetched batches:', formattedBatches);
+        setFilteredBatches(formattedBatches);
       }
-      const formattedBatches = batchesData.map((batch) => ({
-        id: batch.ID,
-        CourseID: batch.CourseID,
-        EntryYear: batch.EntryYear,
-        Sections: batch.Sections || [],
-      }));
-      setBatches(formattedBatches);
-      setFilteredBatches(formattedBatches);
+      setCourses(Array.isArray(coursesData) ? coursesData : []);
     } catch (err) {
-      console.error("Error fetching batches:", err);
-      setError("Failed to load batches. Please try again.");
-      setBatches([]);
-      setFilteredBatches([]);
+      console.error("Error fetching data:", err);
+      setError("Failed to load data. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { fetchBatches(); }, []);
+  useEffect(() => { fetchData(); }, []);
 
   useEffect(() => {
     const results = batches.filter((batch) => {
         const course = courses.find(c => c.ID === batch.CourseID);
-        const courseName = course ? course.Name : '';
-        const courseCode = course ? course.Code : '';
-        const sections = (batch.Sections || []).map(s => s.Name).join(' ');
-        return (batch.EntryYear.toString().includes(searchTerm)) ||
-            (courseName.toLowerCase().includes(searchTerm.toLowerCase())) ||
-            (courseCode.toLowerCase().includes(searchTerm.toLowerCase())) ||
-            (sections.toLowerCase().includes(searchTerm.toLowerCase()))
+        const courseName = course ? course.Name.toLowerCase() : '';
+        const courseCode = course ? course.Code.toLowerCase() : '';
+        const sections = (batch.Sections || []).map(s => s.Name).join(' ').toLowerCase();
+        const search = searchTerm.toLowerCase();
+        return batch.EntryYear.toString().includes(search) ||
+               courseName.includes(search) ||
+               courseCode.includes(search) ||
+               sections.includes(search);
     });
     setFilteredBatches(results);
   }, [searchTerm, batches, courses]);
 
   const handleSectionChange = (index, event) => {
     const values = [...newBatch.Sections];
-    values[index].Name = event.target.value;
+    // Create a new object for the section to ensure state updates correctly
+    values[index] = { ...values[index], Name: event.target.value };
     setNewBatch({ ...newBatch, Sections: values });
   };
 
@@ -132,11 +135,9 @@ const ManageBatches = () => {
   };
 
   const handleSaveNewBatch = async () => {
-    const finalSections = newBatch.Sections
-      .map(s => ({ Name: s.Name.trim().toUpperCase() }))
-      .filter(section => section.Name !== "");
-    if (!newBatch.CourseID || !newBatch.EntryYear.toString().trim() || finalSections.length === 0) {
-      toast.error("Please select a course, enter a year, and add at least one valid section.");
+    const finalSections = newBatch.Sections.filter(section => section.Name && section.Name.trim() !== "");
+    if (!newBatch.CourseID || !newBatch.EntryYear.toString().trim()) {
+      toast.error("Please select a course and enter a year.");
       return;
     }
     const entryYearNumber = parseInt(newBatch.EntryYear.toString().trim());
@@ -144,29 +145,62 @@ const ManageBatches = () => {
       toast.error("Please enter a valid year (numbers only)");
       return;
     }
+    setIsSubmitting(true);
     try {
-      setAddingBatch(true);
-      const batchData = {
-        CourseID: Number(newBatch.CourseID),
-        EntryYear: entryYearNumber,
-        Sections: finalSections,
-      };
-      const isUpdate = !!newBatch.id;
-      const endpoint = isUpdate ? API_ENDPOINTS.UPDATE_BATCH(newBatch.id) : API_ENDPOINTS.ADD_BATCH;
-      const method = isUpdate ? "PUT" : "POST";
-      const response = await fetch(endpoint, { method, headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(batchData) });
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || JSON.stringify(errorData));
+      if (isEditing) {
+        // --- UPDATE BATCH AND SYNC SECTIONS ---
+        const batchData = { CourseID: Number(newBatch.CourseID), EntryYear: entryYearNumber };
+        const batchResponse = await fetch(API_ENDPOINTS.UPDATE_BATCH(newBatch.id), { method: 'PUT', headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(batchData) });
+        if (!batchResponse.ok) throw new Error('Failed to update batch details.');
+
+        const originalBatch = batches.find(b => b.id === newBatch.id);
+        const originalSections = originalBatch ? originalBatch.Sections : [];
+
+        const sectionPromises = [];
+        // Delete sections that were removed
+        originalSections.forEach(origSection => {
+          if (!finalSections.some(newSec => newSec.ID === origSection.ID)) {
+            sectionPromises.push(fetch(API_ENDPOINTS.DELETE_SECTION(origSection.ID), { method: 'DELETE', credentials: 'include' }));
+          }
+        });
+
+        // Add or Update sections
+        finalSections.forEach(newSec => {
+          const sectionData = { Name: newSec.Name.trim().toUpperCase(), BatchID: newBatch.id };
+          if (newSec.ID) { // Update existing section if name changed
+            const original = originalSections.find(o => o.ID === newSec.ID);
+            if (original && original.Name !== sectionData.Name) {
+              sectionPromises.push(fetch(API_ENDPOINTS.UPDATE_SECTION(newSec.ID), { method: 'PUT', headers: { "Content-Type": "application/json" }, credentials: 'include', body: JSON.stringify(sectionData) }));
+            }
+          } else { // Add new section
+            sectionPromises.push(fetch(API_ENDPOINTS.ADD_SECTION, { method: 'POST', headers: { "Content-Type": "application/json" }, credentials: 'include', body: JSON.stringify(sectionData) }));
+          }
+        });
+        await Promise.all(sectionPromises);
+        toast.success('Batch updated successfully!');
+      } else {
+        // --- CREATE NEW BATCH AND SECTIONS ---
+        const batchData = { CourseID: Number(newBatch.CourseID), EntryYear: entryYearNumber };
+        const batchResponse = await fetch(API_ENDPOINTS.ADD_BATCH, { method: 'POST', headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(batchData) });
+        if (!batchResponse.ok) throw new Error('Failed to create batch.');
+        const createdBatch = await batchResponse.json();
+
+        if (finalSections.length > 0) {
+            const sectionPromises = finalSections.map(section => {
+                const sectionData = { Name: section.Name.trim().toUpperCase(), BatchID: createdBatch.ID };
+                return fetch(API_ENDPOINTS.ADD_SECTION, { method: 'POST', headers: { "Content-Type": "application/json" }, credentials: 'include', body: JSON.stringify(sectionData) });
+            });
+            await Promise.all(sectionPromises);
+        }
+        toast.success('Batch and sections created successfully!');
       }
-      await fetchBatches();
+      await fetchData();
       handleCancelAdd();
-      toast.success(`Batch ${newBatch.id ? 'updated' : 'added'} successfully!`);
     } catch (err) {
-      console.error("Full error:", err);
-      toast.error(`Failed to ${newBatch.id ? "update" : "add"} batch: ${err.message}`);
+      console.error("Error saving batch:", err);
+      toast.error(`Failed to save batch: ${err.message}`);
     } finally {
-      setAddingBatch(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -176,7 +210,7 @@ const ManageBatches = () => {
     try {
       const response = await fetch(API_ENDPOINTS.DELETE_BATCH(id), { method: "DELETE", headers: { "Content-Type": "application/json" }, credentials: "include" });
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      await fetchBatches();
+      await fetchData();
       toast.success('Batch deleted successfully!');
     } catch (err) {
       console.error("Error deleting batch:", err);
@@ -184,13 +218,13 @@ const ManageBatches = () => {
     }
   };
 
-  const handleEdit = (batch) => { setNewBatch({ id: batch.id, CourseID: batch.CourseID, EntryYear: batch.EntryYear, Sections: batch.Sections.length > 0 ? [...batch.Sections] : [{ Name: "" }] }); setShowAddDialog(true); };
-  const handleAddNewBatch = () => { setNewBatch({ id: "", CourseID: "", EntryYear: "", Sections: [{ Name: "" }] }); setShowAddDialog(true); };
-  const handleCancelAdd = () => { setNewBatch({ id: "", CourseID: "", EntryYear: "", Sections: [{ Name: "" }] }); setShowAddDialog(false); };
+  const handleEdit = (batch) => { setNewBatch({ id: batch.id, CourseID: batch.CourseID, EntryYear: batch.EntryYear, Sections: batch.Sections.length > 0 ? [...batch.Sections] : [{ Name: "" }] }); setIsEditing(true); setShowAddDialog(true); };
+  const handleAddNewBatch = () => { setNewBatch({ id: "", CourseID: "", EntryYear: "", Sections: [{ Name: "" }] }); setIsEditing(false); setShowAddDialog(true); };
+  const handleCancelAdd = () => { setNewBatch({ id: "", CourseID: "", EntryYear: "", Sections: [{ Name: "" }] }); setIsEditing(false); setShowAddDialog(false); };
   const getCourseDisplay = (courseId) => { const course = courses.find((c) => c.ID === courseId); return course ? `${course.Code} - ${course.Name}` : `Course ID: ${courseId}`; };
 
   if (loading) { return (<div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50"><div className="flex items-center justify-center h-64"><div className="flex items-center space-x-3"><FaSpinner className="animate-spin text-blue-500 text-2xl" /><span className="text-slate-600 text-lg">Loading data...</span></div></div></div>); }
-  if (error) { return (<div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50"><div className="flex items-center justify-center h-64"><div className="text-center"><div className="text-red-500 text-lg mb-4">{error}</div><button onClick={fetchBatches} className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg">Retry</button></div></div></div>); }
+  if (error) { return (<div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50"><div className="flex items-center justify-center h-64"><div className="text-center"><div className="text-red-500 text-lg mb-4">{error}</div><button onClick={fetchData} className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg">Retry</button></div></div></div>); }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
@@ -203,24 +237,23 @@ const ManageBatches = () => {
             <div className="flex items-center space-x-3"><div className="bg-gradient-to-r from-orange-500 to-red-600 p-2 rounded-lg"><FaBook className="text-white text-lg" /></div><div><h2 className="text-lg font-semibold text-slate-800">Batch Management</h2><p className="text-sm text-slate-600">{filteredBatches.length} of {batches.length} batches</p></div></div>
             <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
               <div className="relative w-full sm:w-64"><div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><FaSearch className="text-gray-400" /></div><input type="text" placeholder="Search batches..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10 w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500" /></div>
-              <button className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white px-4 py-2.5 rounded-lg flex items-center justify-center space-x-2" onClick={handleAddNewBatch}><FaPlus className="text-sm" /><span>Add Batch</span></button>
+              {(userRole === 2 || userRole === 3) && (
+                <button className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 text-white px-4 py-2.5 rounded-lg flex items-center justify-center space-x-2" onClick={handleAddNewBatch}><FaPlus className="text-sm" /><span>Add Batch</span></button>
+              )}
             </div>
           </div>
           <div className="hidden md:block overflow-x-auto">
             <table className="w-full">
-              <thead><tr className="bg-slate-800 text-white"><th className="px-6 py-4 text-left font-semibold">Course</th><th className="px-6 py-4 text-left font-semibold">Entry Year</th><th className="px-6 py-4 text-left font-semibold">Sections</th><th className="px-6 py-4 text-center font-semibold">Actions</th></tr></thead>
+              <thead><tr className="bg-slate-800 text-white"><th className="px-6 py-4 text-left font-semibold">Course</th><th className="px-6 py-4 text-left font-semibold">Entry Year</th><th className="px-6 py-4 text-left font-semibold">Sections</th>{(userRole === 2 || userRole === 3) && <th className="px-6 py-4 text-center font-semibold">Actions</th>}</tr></thead>
               <tbody>
                 {filteredBatches.map((batch) => (
                   <tr key={`desktop-${batch.id}`} className="hover:bg-blue-50">
                     <td className="px-6 py-4">{getCourseDisplay(batch.CourseID)}</td>
                     <td className="px-6 py-4">{batch.EntryYear}</td>
-                    <td className="px-6 py-4">
-                      {batch.Sections && batch.Sections.length > 0
-                        ? batch.Sections.map(s => s.Name).join(', ')
-                        : <span className="text-gray-400 italic">No Sections</span>
-                      }
-                    </td>
-                    <td className="px-6 py-4"><div className="flex justify-center space-x-2"><button className="bg-emerald-500 hover:bg-emerald-600 text-white p-2 rounded-lg" onClick={() => handleEdit(batch)} title="Edit Batch"><FaEdit className="text-sm" /></button><button className="bg-rose-500 hover:bg-rose-600 text-white p-2 rounded-lg" onClick={() => handleDelete(batch.id)} title="Delete Batch"><FaTrash className="text-sm" /></button></div></td>
+                    <td className="px-6 py-4">{batch.Sections && batch.Sections.length > 0 ? batch.Sections.map(s => s.Name).join(', ') : <span className="text-gray-400 italic">No Sections</span>}</td>
+                    {(userRole === 2 || userRole === 3) && (
+                      <td className="px-6 py-4"><div className="flex justify-center space-x-2"><button className="bg-emerald-500 hover:bg-emerald-600 text-white p-2 rounded-lg" onClick={() => handleEdit(batch)} title="Edit Batch"><FaEdit className="text-sm" /></button><button className="bg-rose-500 hover:bg-rose-600 text-white p-2 rounded-lg" onClick={() => handleDelete(batch.id)} title="Delete Batch"><FaTrash className="text-sm" /></button></div></td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -229,37 +262,41 @@ const ManageBatches = () => {
           <div className="md:hidden divide-y divide-slate-200">
             {filteredBatches.map((batch) => (
               <div key={`mobile-${batch.id}`} className="p-4 hover:bg-slate-50">
-                <div className="flex items-center justify-between mb-3"><span className="font-semibold text-slate-800">{getCourseDisplay(batch.CourseID)}</span><div className="flex space-x-2"><button className="bg-emerald-500 hover:bg-emerald-600 text-white p-2 rounded-lg" onClick={() => handleEdit(batch)}><FaEdit className="text-sm" /></button><button className="bg-rose-500 hover:bg-rose-600 text-white p-2 rounded-lg" onClick={() => handleDelete(batch.id)}><FaTrash className="text-sm" /></button></div></div>
+                <div className="flex items-center justify-between mb-3"><span className="font-semibold text-slate-800">{getCourseDisplay(batch.CourseID)}</span>
+                {(userRole === 2 || userRole === 3) && (
+                  <div className="flex space-x-2"><button className="bg-emerald-500 hover:bg-emerald-600 text-white p-2 rounded-lg" onClick={() => handleEdit(batch)}><FaEdit className="text-sm" /></button><button className="bg-rose-500 hover:bg-rose-600 text-white p-2 rounded-lg" onClick={() => handleDelete(batch.id)}><FaTrash className="text-sm" /></button></div>
+                )}
+                </div>
                 <div className="text-sm text-slate-600"><strong>Year:</strong> {batch.EntryYear}</div>
                 <div className="text-sm text-slate-600"><strong>Sections:</strong> {batch.Sections && batch.Sections.length > 0 ? batch.Sections.map(s => s.Name).join(', ') : <span className="italic">No Sections</span>}</div>
               </div>
             ))}
           </div>
-          {filteredBatches.length === 0 && (<div className="text-center py-12"><FaBook className="mx-auto text-slate-400 text-4xl mb-4" /><h3 className="text-lg font-medium text-slate-800 mb-2">{searchTerm ? "No matching batches found" : "No Batches Found"}</h3><p className="text-slate-600 mb-4">{searchTerm ? "Try a different search term" : "Get started by adding your first batch."}</p>{!searchTerm && (<button className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-6 py-3 rounded-lg flex items-center space-x-2 mx-auto" onClick={handleAddNewBatch}><FaPlus /><span>Add First Batch</span></button>)}</div>)}
+          {filteredBatches.length === 0 && (<div className="text-center py-12"><FaBook className="mx-auto text-slate-400 text-4xl mb-4" /><h3 className="text-lg font-medium text-slate-800 mb-2">{searchTerm ? "No matching batches found" : "No Batches Found"}</h3><p className="text-slate-600 mb-4">{searchTerm ? "Try a different search term" : "Get started by adding your first batch."}</p>{!searchTerm && (userRole === 2 || userRole === 3) && (<button className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-6 py-3 rounded-lg flex items-center space-x-2 mx-auto" onClick={handleAddNewBatch}><FaPlus /><span>Add First Batch</span></button>)}</div>)}
         </div>
       </div>
       {showAddDialog && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white flex items-center justify-between p-6 border-b"><h3 className="text-lg font-semibold text-slate-800">{newBatch.id ? "Edit Batch" : "Add New Batch"}</h3><button onClick={handleCancelAdd} className="text-slate-400 hover:text-slate-600" disabled={addingBatch}><FaTimes className="text-xl" /></button></div>
+            <div className="sticky top-0 bg-white flex items-center justify-between p-6 border-b"><h3 className="text-lg font-semibold text-slate-800">{isEditing ? "Edit Batch" : "Add New Batch"}</h3><button onClick={handleCancelAdd} className="text-slate-400 hover:text-slate-600" disabled={isSubmitting}><FaTimes className="text-xl" /></button></div>
             <div className="p-6 space-y-4">
-              <div><label htmlFor="course_id" className="block text-sm font-medium text-slate-700 mb-2">Course *</label><select id="course_id" value={newBatch.CourseID} onChange={(e) => setNewBatch({ ...newBatch, CourseID: e.target.value })} disabled={addingBatch || courses.length === 0} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100"><option value="">Select a course</option>{courses.map((course) => (<option key={course.ID} value={course.ID}>{course.Code} - {course.Name}</option>))}</select></div>
-              <div><label htmlFor="entryYear" className="block text-sm font-medium text-slate-700 mb-2">Entry Year *</label><input id="entryYear" type="number" value={newBatch.EntryYear} onChange={(e) => setNewBatch({ ...newBatch, EntryYear: e.target.value })} placeholder="e.g., 2024" disabled={addingBatch} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100" /></div>
+              <div><label htmlFor="course_id" className="block text-sm font-medium text-slate-700 mb-2">Course *</label><select id="course_id" value={newBatch.CourseID} onChange={(e) => setNewBatch({ ...newBatch, CourseID: e.target.value })} disabled={isSubmitting || courses.length === 0} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100"><option value="">Select a course</option>{courses.map((course) => (<option key={course.ID} value={course.ID}>{course.Code} - {course.Name}</option>))}</select></div>
+              <div><label htmlFor="entryYear" className="block text-sm font-medium text-slate-700 mb-2">Entry Year *</label><input id="entryYear" type="number" value={newBatch.EntryYear} onChange={(e) => setNewBatch({ ...newBatch, EntryYear: e.target.value })} placeholder="e.g., 2024" disabled={isSubmitting} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100" /></div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Sections *</label>
                 {newBatch.Sections.map((section, index) => (
                   <div key={index} className="flex items-center space-x-2 mb-2">
-                    <input type="text" placeholder={`Section Name ${index + 1}`} value={section.Name} onChange={(e) => handleSectionChange(index, e)} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100" disabled={addingBatch} />
-                    <button type="button" onClick={() => handleRemoveSection(index)} className="bg-red-500 text-white p-2 rounded-lg hover:bg-red-600 disabled:bg-red-300" disabled={addingBatch || newBatch.Sections.length <= 1}><FaTrash /></button>
+                    <input type="text" placeholder={`Section Name ${index + 1}`} value={section.Name} onChange={(e) => handleSectionChange(index, e)} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100" disabled={isSubmitting} />
+                    <button type="button" onClick={() => handleRemoveSection(index)} className="bg-red-500 text-white p-2 rounded-lg hover:bg-red-600 disabled:bg-red-300" disabled={isSubmitting || newBatch.Sections.length <= 1}><FaTrash /></button>
                   </div>
                 ))}
-                <button type="button" onClick={handleAddSection} className="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center space-x-2" disabled={addingBatch}><FaPlus /><span>Add Another Section</span></button>
+                <button type="button" onClick={handleAddSection} className="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center space-x-2" disabled={isSubmitting}><FaPlus /><span>Add Another Section</span></button>
               </div>
               <div className="flex space-x-3 pt-4">
-                <button onClick={handleSaveNewBatch} disabled={addingBatch} className="flex-1 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 disabled:from-slate-300 text-white py-3 px-4 rounded-lg font-medium disabled:cursor-not-allowed flex items-center justify-center space-x-2">
-                  {addingBatch ? (<><FaSpinner className="animate-spin" /><span>{newBatch.id ? "Updating..." : "Adding..."}</span></>) : (<span>{newBatch.id ? "Update Batch" : "Add Batch"}</span>)}
+                <button onClick={handleSaveNewBatch} disabled={isSubmitting} className="flex-1 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 disabled:from-slate-300 text-white py-3 px-4 rounded-lg font-medium disabled:cursor-not-allowed flex items-center justify-center space-x-2">
+                  {isSubmitting ? (<><FaSpinner className="animate-spin" /><span>{isEditing ? "Updating..." : "Adding..."}</span></>) : (<span>{isEditing ? "Update Batch" : "Add Batch"}</span>)}
                 </button>
-                <button onClick={handleCancelAdd} disabled={addingBatch} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 px-4 rounded-lg font-medium disabled:cursor-not-allowed">Cancel</button>
+                <button onClick={handleCancelAdd} disabled={isSubmitting} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 px-4 rounded-lg font-medium disabled:cursor-not-allowed">Cancel</button>
               </div>
             </div>
           </div>

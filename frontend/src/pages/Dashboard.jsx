@@ -358,9 +358,9 @@ const Dashboard = () => {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
       {/* Header Section */}
       <div className="px-4 sm:px-6 lg:px-8 pt-6 pb-4">
-         <Heading text={userRole === "admin" ? "Admin Dashboard" : "Faculty Dashboard"} />
+         <Heading text={userRole === 3 || userRole === 2 ? "Admin Dashboard" : "Faculty Dashboard"} />
       <p className="text-center text-slate-600 mt-2 text-sm sm:text-base">
-        {userRole === "admin" ? " Manage your academic scheduling system efficiently" : "View your academic scheduling system efficiently"}
+        {userRole === 3 || userRole === 2 ? " Manage your academic scheduling system efficiently" : "View your academic scheduling system efficiently"}
       </p>
       </div>
 
