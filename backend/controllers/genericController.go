@@ -19,6 +19,21 @@ func All[T any](db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
+func AllWithPreload[T any](db *gorm.DB, preloads ...string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var models []T
+		query := db
+		for _, preload := range preloads {
+			query = query.Preload(preload)
+		}
+		if err := query.Find(&models).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, models)
+	}
+}
+
 func Get[T any](db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id := c.Param("id")

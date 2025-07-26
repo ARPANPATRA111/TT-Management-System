@@ -184,9 +184,14 @@ const ManageFaculty = () => {
         setIsEditing(false);
     };
 
-    // Create a list of users who are not already assigned to a faculty member
+    // Correctly filter users for the dropdown to prevent duplicate key errors
     const assignedUserIDs = faculties.map(f => f.UserID);
-    const availableUsers = users.filter(u => !assignedUserIDs.includes(u.ID) && (u.RoleID === 1 || u.RoleID === 2));
+    const availableUsers = users.filter(u =>
+        u.Role && // Ensure the user has a role object
+        !assignedUserIDs.includes(u.ID) &&
+        (u.RoleID === 1 || u.RoleID === 2)
+    );
+    console.log('Available users for faculty assignment:', availableUsers);
 
     if (loading) {
         return (<div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50"><div className="flex items-center justify-center h-64"><div className="flex items-center space-x-3"><FaSpinner className="animate-spin text-blue-500 text-2xl" /><span className="text-slate-600 text-lg">Loading faculties...</span></div></div></div>);
@@ -264,15 +269,16 @@ const ManageFaculty = () => {
                                     disabled={isSubmitting || isEditing}
                                     className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:cursor-not-allowed"
                                 >
-                                    <option value="">Select a User</option>
+                                    <option value="">Select an available user</option>
                                     {isEditing && users.find(u => u.ID === newFaculty.UserID) && (
                                         <option value={newFaculty.UserID}>{users.find(u => u.ID === newFaculty.UserID).Email}</option>
                                     )}
                                     {availableUsers.map(user => (
-                                        <option key={user.ID} value={user.ID}>{user.Email} ({user.Role.Name})</option>
+                                        <option key={user.ID} value={user.ID}>{user.Email} ({user.RoleId})</option>
                                     ))}
                                 </select>
                                 {isEditing && <p className="text-xs text-slate-500 mt-1">The linked user cannot be changed after creation.</p>}
+                                {!isEditing && availableUsers.length === 0 && <p className="text-xs text-red-500 mt-1">No available users with role 1 or 2 to assign.</p>}
                             </div>
                             <div className="flex space-x-3 pt-4">
                                 <button onClick={handleSaveFaculty} disabled={isSubmitting} className="flex-1 bg-gradient-to-r from-blue-500 to-indigo-600 text-white py-3 px-4 rounded-lg font-medium disabled:cursor-not-allowed flex items-center justify-center space-x-2">

@@ -43,14 +43,14 @@ func registerFacultyRoutes(r *gin.RouterGroup, db *gorm.DB) {
 	r.GET("/subject", controllers.All[models.Subject](db))
 	r.GET("/subject/:id", controllers.Get[models.Subject](db))
 
-	r.GET("/faculty", controllers.All[models.Faculty](db))
-	r.GET("/faculty/:id", controllers.Get[models.Faculty](db))
+	r.GET("/faculty", controllers.AllWithPreload[models.Faculty](db, "User"))
+	r.GET("/faculty/:id", controllers.Get[models.Faculty](db)) // You might need a GetWithPreload for this too
 
 	r.GET("/room", controllers.All[models.Room](db))
 	r.GET("/room/:id", controllers.Get[models.Room](db))
 
-	r.GET("/batch", controllers.All[models.Batch](db))
-	r.GET("/batch/:id", controllers.Get[models.Batch](db))
+	r.GET("/batch", controllers.AllWithPreload[models.Batch](db, "Sections"))
+	r.GET("/batch/:id", controllers.Get[models.Batch](db)) // You might need a GetWithPreload for this too
 
 	r.GET("/lecture", controllers.QueryLectures(db)) // for backwards compatibility, use /query
 	r.GET("/lecture/query", controllers.QueryLectures(db))
@@ -102,9 +102,9 @@ func registerAdminRoutes(r *gin.RouterGroup, db *gorm.DB) {
 	r.DELETE("/batch/:id", controllers.Delete[models.Batch](db))
 
 	// Lecture
-	r.POST("/lecture", controllers.Create[models.Lecture](db))
+	r.POST("/lecture", controllers.CreateLecture(db))
 	r.PUT("/lecture/:id", controllers.Update[models.Lecture](db))
-	r.DELETE("/lecture/:id", controllers.Delete[models.Lecture](db))
+	r.DELETE("/lecture", controllers.DeleteLecture(db))
 
 	// Session
 	r.POST("/session", controllers.Create[models.Session](db))
