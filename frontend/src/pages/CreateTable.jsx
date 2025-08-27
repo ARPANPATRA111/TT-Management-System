@@ -37,6 +37,17 @@ const timeToMinutes = (timeStr) => {
   }
 };
 
+// Helper function to get the correct day of week index for the backend
+const getDayOfWeekIndex = (dayName) => {
+  const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const index = days.indexOf(dayName);
+  if (index === -1) {
+    return 0; // Or handle error appropriately
+  }
+  // Custom mapping: Sunday=1, Monday=2, Tuesday=3...
+  return index === 0 ? 1 : index + 1;
+};
+
 // Helper function to group consecutive lectures
 const groupConsecutiveTimeSlots = (gridData, days, timeSlots) => {
   const groupedData = {};
@@ -188,7 +199,10 @@ const CreateTable = () => {
           }
 
           try {
-            const day = academicData.days[lecture.Timeslot.DayOfWeek - 1];
+            // FIX: Correctly map the backend's day_of_week index to the frontend's day array.
+            const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+            const dayIndex = lecture.Timeslot.DayOfWeek - 1;
+            const day = days[dayIndex];
             const startTime = formatTimeToHHMM(lecture.Timeslot.StartTime);
             const endTime = formatTimeToHHMM(lecture.Timeslot.EndTime);
 
@@ -276,7 +290,7 @@ const CreateTable = () => {
 
         if (subject && faculty && currentLecture.room) {
           const payload = {
-            DayOfWeek: academicData.days.indexOf(day) + 1,
+            DayOfWeek: getDayOfWeekIndex(day),
             StartTime: startTime, EndTime: endTime,
             SubjectID: subject.ID, FacultyID: faculty.ID,
             Room: currentLecture.room,
@@ -566,7 +580,7 @@ const CreateTable = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {academicData.days.map(day => {
+                  {academicData.days.filter(day => day !== 'Sunday').map(day => {
                     const groupedDayData = groupConsecutiveTimeSlots(gridData, [day], timeSlots);
                     return (
                       <tr key={day} className="border-t">
