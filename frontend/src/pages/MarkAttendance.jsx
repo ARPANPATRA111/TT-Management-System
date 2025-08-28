@@ -17,6 +17,9 @@ import {
 } from "lucide-react";
 import { GiTeacher } from "react-icons/gi";
 import academicData from "../assets/academicData.json";
+import backendService from "../services/backendservice";
+
+// Helper component for loading spinner
 const Spinner = ({ className = "w-12 h-12" }) => (
   <svg
     className={`animate-spin text-blue-500 ${className}`}
@@ -40,6 +43,25 @@ const Spinner = ({ className = "w-12 h-12" }) => (
   </svg>
 );
 
+// This function corrects the timezone issue on the frontend.
+const formatTime = (timeStr) => {
+  if (!timeStr) return 'N/A';
+  try {
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    const date = new Date();
+    date.setUTCHours(hours, minutes, 0, 0);
+    date.setMinutes(date.getMinutes() - 330); // Subtract 5 hours and 30 minutes
+    const correctedHours = date.getUTCHours().toString().padStart(2, '0');
+    const correctedMinutes = date.getUTCMinutes().toString().padStart(2, '0');
+    return `${correctedHours}:${correctedMinutes}`;
+  } catch (e) {
+    console.error("Could not format time:", timeStr, e);
+    return timeStr;
+  }
+};
+
+
+// Badge component for attendance status
 const StatusBadge = ({ status, onClick, disabled = false }) => {
   const getStatusConfig = (status) => {
     switch (status) {
@@ -81,8 +103,8 @@ const StatusBadge = ({ status, onClick, disabled = false }) => {
       onClick={onClick}
       disabled={disabled}
       className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border transition-all duration-200 ${disabled
-          ? 'opacity-50 cursor-not-allowed'
-          : `cursor-pointer hover:scale-105 hover:shadow-md ${config.hoverColor}`
+        ? 'opacity-50 cursor-not-allowed'
+        : `cursor-pointer hover:scale-105 hover:shadow-md ${config.hoverColor}`
         } ${config.bgColor} ${config.textColor} ${config.borderColor}`}
     >
       <Icon className="w-4 h-4" />
@@ -91,14 +113,14 @@ const StatusBadge = ({ status, onClick, disabled = false }) => {
   );
 };
 
+// Modal for updating attendance status
 const StatusModal = React.memo(({ session, onClose, onUpdate }) => {
   const [selectedStatus, setSelectedStatus] = useState(session.status || 'held');
   const statusModalRef = useRef(null);
 
   const statusOptions = [
-    { value: 'held', label: 'Class Taken', color: 'green', icon: Check },
-    { value: 'cancelled', label: 'Class Missed', color: 'red', icon: X },
-    { value: "", label: 'No Entry', color: 'yellow', icon: AlertTriangle },
+    { value: 'held', label: 'Class Taken (Present)', color: 'green', icon: Check },
+    { value: 'cancelled', label: 'Class Missed (Absent)', color: 'red', icon: X },
   ];
 
   return (
@@ -120,7 +142,7 @@ const StatusModal = React.memo(({ session, onClose, onUpdate }) => {
             <span className="font-semibold">Subject:</span> {session.subject || 'N/A'}
           </p>
           <p className="text-gray-700 mb-2">
-            <span className="font-semibold">Time:</span> {session.start_time}-{session.end_time}
+            <span className="font-semibold">Time:</span> {formatTime(session.start_time)} - {formatTime(session.end_time)}
           </p>
           <p className="text-gray-700 mb-2">
             <span className="font-semibold">Faculty:</span> {session.faculty || 'N/A'}
@@ -134,10 +156,7 @@ const StatusModal = React.memo(({ session, onClose, onUpdate }) => {
           {statusOptions.map((option) => (
             <div
               key={option.value}
-              onClick={(e) => {
-                e.stopPropagation();
-                setSelectedStatus(option.value);
-              }}
+              onClick={() => setSelectedStatus(option.value)}
               className={`flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer transition-all ${selectedStatus === option.value
                 ? `border-${option.color}-500 bg-${option.color}-50`
                 : 'border-gray-200 hover:bg-gray-50'
@@ -157,10 +176,7 @@ const StatusModal = React.memo(({ session, onClose, onUpdate }) => {
             Cancel
           </button>
           <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onUpdate(session.session_id, selectedStatus);
-            }}
+            onClick={() => onUpdate(session, selectedStatus)}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
           >
             Update Status
@@ -180,11 +196,9 @@ function MarkAttendance() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [timeFilter, setTimeFilter] = useState("all");
-  const [expandedSession, setExpandedSession] = useState(null);
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [selectedSessionForModal, setSelectedSessionForModal] = useState(null);
 
-  // Filter and Course data
   const [courses, setCourses] = useState([]);
   const [semesters, setSemesters] = useState([]);
   const [faculties, setFaculties] = useState([]);
@@ -201,19 +215,16 @@ function MarkAttendance() {
     SESSION: `${API_BASE_URL}/session`,
   };
 
-  // Initialize data on component mount
   useEffect(() => {
     fetchInitialData();
   }, []);
 
-  // Fetch sessions when date or filters change
   useEffect(() => {
     if (!initialLoading) {
       fetchSessions();
     }
   }, [selectedDate, selectedCourse, selectedSemester, selectedFaculty, initialLoading]);
 
-  // Apply filters to sessions
   useEffect(() => {
     applyFilters();
   }, [sessions, searchTerm, statusFilter, timeFilter]);
@@ -221,7 +232,13 @@ function MarkAttendance() {
   const fetchInitialData = async () => {
     setInitialLoading(true);
     try {
-      await Promise.all([fetchCourses(), fetchFaculties()]);
+      const [coursesData, facultiesData] = await Promise.all([
+        backendService.get('/api/v1/course'),
+        backendService.get('/api/v1/faculty'),
+      ]);
+      setCourses(Array.isArray(coursesData) ? coursesData : []);
+      const facultiesWithFullName = (facultiesData || []).map(f => ({ ...f, fullName: `${f.FirstName || ''} ${f.LastName || ''}`.trim() }));
+      setFaculties(facultiesWithFullName);
       setSemesters(academicData.semesters || []);
     } catch (err) {
       setError("Failed to fetch initial data");
@@ -231,72 +248,25 @@ function MarkAttendance() {
     }
   };
 
-  const fetchCourses = async () => {
-    try {
-      const response = await fetch(API_ENDPOINTS.GET_COURSE, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-      });
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      const data = await response.json();
-      setCourses(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error('Error fetching courses:', error);
-      setCourses([]);
-    }
-  };
-
-  const fetchFaculties = async () => {
-    try {
-      const response = await fetch(API_ENDPOINTS.GET_FACULTY, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-      });
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      const data = await response.json();
-      setFaculties(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error('Error fetching faculties:', error);
-      setFaculties([]);
-    }
-  };
-
   const fetchSessions = async () => {
     setLoading(true);
     setError(null);
+    setSessions([]); // Clear previous sessions
     try {
       const params = new URLSearchParams({ date: selectedDate });
       if (selectedCourse !== "all") params.append('course_id', selectedCourse);
       if (selectedSemester !== "all") params.append('semester', selectedSemester);
       if (selectedFaculty !== "all") params.append('faculty_id', selectedFaculty);
 
-      const response = await fetch(`${API_ENDPOINTS.CALENDAR_DAY}?${params}`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-      });
+      console.log(`Fetching from: ${API_ENDPOINTS.CALENDAR_DAY}?${params}`);
 
-      if (!response.ok) {
-        if (response.status === 500) {
-          setSessions([]);
-          setError(null);
-          return;
-        }
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
+      const data = await backendService.get('/api/v1/calendar/day', params);
+      console.log('Raw API Response:', data);
 
-      const data = await response.json();
-      const sessionData = Array.isArray(data) ? data : (data.data || []);
+      const sessionData = Array.isArray(data.data) ? data.data : [];
+      console.log('Processed Session Data:', sessionData);
 
-      // Sort sessions by start time
-      const sortedSessions = sessionData.sort((a, b) => {
-        const timeA = a.start_time || '00:00';
-        const timeB = b.start_time || '00:00';
-        return timeA.localeCompare(timeB);
-      });
-
+      const sortedSessions = sessionData.sort((a, b) => (a.start_time || '00:00').localeCompare(b.start_time || '00:00'));
       setSessions(sortedSessions);
     } catch (err) {
       console.error("Error fetching sessions:", err);
@@ -310,86 +280,92 @@ function MarkAttendance() {
   const applyFilters = () => {
     let filtered = [...sessions];
 
-    // Search filter
     if (searchTerm) {
       filtered = filtered.filter(session =>
-        (session.subject || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (session.faculty || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (session.course_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (session.room || '').toLowerCase().includes(searchTerm.toLowerCase())
+        ['subject', 'faculty', 'course_name', 'room'].some(prop =>
+          (session[prop] || '').toLowerCase().includes(searchTerm.toLowerCase())
+        )
       );
     }
 
-    // Status filter
     if (statusFilter !== "all") {
       filtered = filtered.filter(session => {
-        if (statusFilter === "marked") {
-          return session.status === 'held' || session.status === 'cancelled';
-        } else if (statusFilter === "unmarked") {
-          return !session.status || session.status === '';
-        } else {
-          return session.status === statusFilter;
-        }
+        if (statusFilter === "marked") return session.status === 'held' || session.status === 'cancelled';
+        if (statusFilter === "unmarked") return !session.status;
+        return session.status === statusFilter;
       });
     }
 
-    // Time filter
     if (timeFilter !== "all") {
       const now = new Date();
+      const todayStr = now.toISOString().split('T')[0];
       const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
 
-      filtered = filtered.filter(session => {
-        const startTime = session.start_time || '00:00';
-        const endTime = session.end_time || '23:59';
-
-        if (timeFilter === "current") {
-          return currentTime >= startTime && currentTime <= endTime;
-        } else if (timeFilter === "upcoming") {
-          return currentTime < startTime;
-        } else if (timeFilter === "past") {
-          return currentTime > endTime;
-        }
-        return true;
-      });
+      if (selectedDate < todayStr) {
+        filtered = timeFilter === 'past' ? filtered : [];
+      } else if (selectedDate > todayStr) {
+        filtered = timeFilter === 'upcoming' ? filtered : [];
+      } else {
+        filtered = filtered.filter(session => {
+          const startTime = formatTime(session.start_time);
+          const endTime = formatTime(session.end_time);
+          if (timeFilter === "current") return currentTime >= startTime && currentTime <= endTime;
+          if (timeFilter === "upcoming") return currentTime < startTime;
+          if (timeFilter === "past") return currentTime > endTime;
+          return true;
+        });
+      }
     }
 
     setFilteredSessions(filtered);
   };
 
-  const markAttendance = async (sessionId, newStatus) => {
+  // REFINED: Logic updated to never delete a session, only update or create.
+  const markAttendance = async (sessionToUpdate, newStatus) => {
+    closeStatusModal();
     try {
-      const response = await fetch(`${API_BASE_URL}/session/${sessionId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        credentials: 'include',
-        body: JSON.stringify({ status: newStatus })
-      });
+      const payload = {
+        TimetableID: sessionToUpdate.timetable_id,
+        TimeslotID: sessionToUpdate.timeslot_id,
+        Date: new Date(selectedDate).toISOString(),
+        Status: newStatus, // This will be either 'held' or 'cancelled'
+      };
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
-      }
+      // If the session already exists in the database (has a session_id), we update it.
+      // Otherwise, we create a new session record.
+      // This single block of logic handles all cases:
+      // 1. Not Marked -> Held (Creates a new session with 'held' status)
+      // 2. Not Marked -> Cancelled (Creates a new session with 'cancelled' status)
+      // 3. Held -> Cancelled (Updates the existing session to 'cancelled')
+      // 4. Cancelled -> Held (Updates the existing session to 'held')
+      const responseData = sessionToUpdate.session_id
+        ? await backendService.put(`/api/v1/session/${sessionToUpdate.session_id}`, payload)
+        : await backendService.post('/api/v1/session', payload);
 
-      // Update local state
+      // Update the local state with the new data from the backend response
+      const finalSessionState = {
+        ...sessionToUpdate,
+        status: responseData.Status,
+        session_id: responseData.ID,
+      };
+
+      // Update the main sessions list to reflect the change immediately.
       setSessions(prevSessions =>
-        prevSessions.map(session =>
-          session.session_id === sessionId
-            ? { ...session, status: newStatus }
-            : session
+        prevSessions.map(s =>
+          (s.timetable_id === sessionToUpdate.timetable_id && s.timeslot_id === sessionToUpdate.timeslot_id)
+            ? finalSessionState
+            : s
         )
       );
 
-      setError(null);
-      setShowStatusModal(false);
-      setSelectedSessionForModal(null);
     } catch (err) {
-      console.error("Error marking attendance:", err);
-      setError(`Failed to mark attendance: ${err.message}`);
+      console.error("Error updating attendance:", err);
+      setError(`Failed to update attendance: ${err.message || 'Please try again'}`);
+      // Re-fetch sessions to ensure UI is in sync with the database after an error
+      fetchSessions();
     }
   };
+
 
   const handleStatusBadgeClick = (session) => {
     setSelectedSessionForModal(session);
@@ -416,29 +392,19 @@ function MarkAttendance() {
     } else if (sessionDate.getTime() < today.getTime()) {
       return 'past';
     } else {
-      if (currentTime < startTime) return 'upcoming';
-      if (currentTime > endTime) return 'past';
+      const correctedStartTime = formatTime(startTime);
+      if (currentTime < correctedStartTime) return 'upcoming';
+      const correctedEndTime = formatTime(endTime);
+      if (currentTime > correctedEndTime) return 'past';
       return 'current';
     }
-  };
-
-  const formatTime = (time) => {
-    if (!time) return 'N/A';
-    const [hours, minutes] = time.split(':');
-    const hour12 = hours % 12 || 12;
-    const ampm = hours < 12 ? 'AM' : 'PM';
-    return `${hour12}:${minutes} ${ampm}`;
-  };
-
-  const toggleSessionExpansion = (sessionId) => {
-    setExpandedSession(expandedSession === sessionId ? null : sessionId);
   };
 
   if (initialLoading) {
     return (
       <div className="min-h-screen flex flex-col justify-center items-center bg-gray-100">
         <Spinner />
-        <p className="mt-4 text-lg text-gray-600">Loading Mark Attendance...</p>
+        <p className="mt-4 text-lg text-gray-600">Loading Mark Lectures...</p>
       </div>
     );
   }
@@ -451,7 +417,7 @@ function MarkAttendance() {
           <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
             <div className="flex items-center gap-2 sm:gap-4">
               <h1 className="text-3xl sm:text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-800 flex items-center gap-2 sm:gap-3">
-                Mark Attendance
+                Mark Lectures
               </h1>
             </div>
 
@@ -504,7 +470,7 @@ function MarkAttendance() {
                 >
                   <option value="all">All Semesters</option>
                   {semesters.map(s => (
-                    <option key={s.ID} value={s.ID || s.number}>{s.Name || `Semester ${s.number}`}</option>
+                    <option key={s.id} value={s.number}>{s.name || `Semester ${s.number}`}</option>
                   ))}
                 </select>
               </div>
@@ -518,7 +484,7 @@ function MarkAttendance() {
                 >
                   <option value="all">All Faculties</option>
                   {faculties.map(f => (
-                    <option key={f.ID} value={f.ID}>{f.Name}</option>
+                    <option key={f.ID} value={f.ID}>{f.fullName}</option>
                   ))}
                 </select>
               </div>
@@ -583,10 +549,9 @@ function MarkAttendance() {
             <div className="divide-y divide-gray-200">
               {filteredSessions.map((session, index) => {
                 const timeStatus = getTimeStatus(session.start_time, session.end_time);
-                const isExpanded = expandedSession === session.session_id;
 
                 return (
-                  <div key={session.session_id || index} className="p-6 hover:bg-gray-50/50 transition-colors duration-200">
+                  <div key={`${session.timetable_id}-${session.timeslot_id}-${index}`} className="p-6 hover:bg-gray-50/50 transition-colors duration-200">
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex-1">
                         <div className="flex items-center gap-4 mb-3">
@@ -594,12 +559,12 @@ function MarkAttendance() {
                             {session.subject || 'Subject N/A'}
                           </h3>
                           <div className={`px-2 py-1 rounded-full text-xs font-medium ${timeStatus === 'current'
-                              ? 'bg-green-100 text-green-800'
-                              : timeStatus === 'upcoming'
-                                ? 'bg-blue-100 text-blue-800'
-                                : 'bg-gray-100 text-gray-800'
+                            ? 'bg-green-100 text-green-800'
+                            : timeStatus === 'upcoming'
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-gray-100 text-gray-800'
                             }`}>
-                            {timeStatus === 'current' ? 'Ongoing' : timeStatus === 'upcoming' ? 'Upcoming' : 'Completed'}
+                            {timeStatus.charAt(0).toUpperCase() + timeStatus.slice(1)}
                           </div>
                         </div>
 
@@ -610,7 +575,7 @@ function MarkAttendance() {
                             <span>{formatTime(session.start_time)} - {formatTime(session.end_time)}</span>
                           </div>
                           <div className="flex items-center gap-2">
-                            <GiTeacher  className="w-4 h-4 text-blue-500" />
+                            <GiTeacher className="w-4 h-4 text-blue-500" />
                             <span>{session.faculty || 'Faculty N/A'}</span>
                           </div>
                           <div className="flex items-center gap-2">
@@ -643,46 +608,8 @@ function MarkAttendance() {
                           status={session.status}
                           onClick={() => handleStatusBadgeClick(session)}
                         />
-
-                        <button
-                          onClick={() => toggleSessionExpansion(session.session_id)}
-                          className="p-2 hover:bg-gray-200 rounded-full transition-colors duration-200"
-                        >
-                          {isExpanded ? (
-                            <ChevronUp className="w-5 h-5 text-gray-600" />
-                          ) : (
-                            <ChevronDown className="w-5 h-5 text-gray-600" />
-                          )}
-                        </button>
                       </div>
                     </div>
-
-                    {/* Expanded Details - Database IDs Only */}
-                    {isExpanded && (
-                      <div className="mt-4 pt-4 border-t border-gray-200">
-                        <h4 className="text-sm font-semibold text-gray-700 mb-3">Database Information</h4>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                          <div>
-                            <strong className="text-gray-700">Session ID:</strong>
-                            <p className="text-gray-600 mt-1 font-mono text-xs bg-gray-100 px-2 py-1 rounded">
-                              {session.session_id || 'N/A'}
-                            </p>
-                          </div>
-                          <div>
-                            <strong className="text-gray-700">Lecture ID:</strong>
-                            <p className="text-gray-600 mt-1 font-mono text-xs bg-gray-100 px-2 py-1 rounded">
-                              {session.lecture_id || 'N/A'}
-                            </p>
-                          </div>
-                          <div>
-                            <strong className="text-gray-700">Course ID:</strong>
-                            <p className="text-gray-600 mt-1 font-mono text-xs bg-gray-100 px-2 py-1 rounded">
-                              {session.course_id || 'N/A'}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 );
               })}
