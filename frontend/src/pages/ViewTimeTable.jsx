@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
-import SearchableSelect from "../components/SearchableSelect"; // Using SearchableSelect
+import SearchableSelect from "../components/SearchableSelect";
+import academicData from "../assets/academicData.json";
 import {
   ChevronLeft,
   ChevronRight,
@@ -13,110 +14,139 @@ import {
   MapPin,
 } from "lucide-react";
 import { FaEdit } from "react-icons/fa";
-import clsx from 'clsx';
+import backendService from "../services/backendservice";
 
+
+// Helper component for loading spinner
 const Spinner = ({ className = "w-12 h-12" }) => (
-  <svg className={`animate-spin text-blue-500 ${className}`} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+  <svg
+    className={`animate-spin text-blue-500 ${className}`}
+    xmlns="http://www.w3.org/2000/svg"
+    fill="none"
+    viewBox="0 0 24 24"
+  >
+    <circle
+      className="opacity-25"
+      cx="12"
+      cy="12"
+      r="10"
+      stroke="currentColor"
+      strokeWidth="4"
+    ></circle>
+    <path
+      className="opacity-75"
+      fill="currentColor"
+      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+    ></path>
   </svg>
 );
 
-const CalendarDay = React.memo(({ day, classes, isToday, onClick }) => {
-  const hasClasses = classes.total_held > 0 || classes.total_cancelled > 0;
-  let indicator = "bg-gray-300";
-
-  if (hasClasses) {
-    if (classes.total_cancelled === 0) indicator = "bg-green-500";
-    else if (classes.total_held === 0) indicator = "bg-red-500";
-    else indicator = "bg-yellow-400";
+// Timezone-aware time formatting function
+const formatTime = (timeStr) => {
+  if (!timeStr) return 'N/A';
+  try {
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    const date = new Date();
+    date.setUTCHours(hours, minutes, 0, 0);
+    date.setMinutes(date.getMinutes() - 330); // Subtract 5 hours and 30 minutes
+    const correctedHours = date.getUTCHours().toString().padStart(2, '0');
+    const correctedMinutes = date.getUTCMinutes().toString().padStart(2, '0');
+    return `${correctedHours}:${correctedMinutes}`;
+  } catch (e) {
+    console.error("Could not format time:", timeStr, e);
+    return timeStr;
   }
+};
 
-  return (
-    <div onClick={() => onClick(day)}
-      className={`p-2 border border-gray-200/80 cursor-pointer transition-all duration-300 ease-in-out transform hover:scale-105 hover:shadow-xl rounded-lg group ${isToday ? 'ring-2 ring-blue-500 shadow-lg' : ''} ${hasClasses ? 'bg-white' : 'bg-gray-50/50'}`}
-    >
-      <div className="flex flex-col items-center justify-center h-full min-h-[5rem]">
-        <span className={`text-lg font-bold ${isToday ? 'text-blue-600' : 'text-gray-800'}`}>{day.getDate()}</span>
-        <div className={`w-3 h-3 rounded-full mt-2 transition-all duration-300 group-hover:scale-125 ${indicator}`}></div>
-      </div>
-    </div>
-  );
-});
 
-const StatusModal = React.memo(({ lecture, onClose, onUpdate }) => {
-  const [selectedStatus, setSelectedStatus] = useState(lecture.status || 'held');
-  const statusModalRef = useRef(null);
+const CalendarDay = React.memo(({ day, classes, isToday, onClick }) => {
+    const hasClasses = classes.total_held > 0 || classes.total_cancelled > 0;
+    let indicator = "bg-gray-300";
 
-  const statusOptions = [
-    { value: 'held', label: 'Class Taken', color: 'green', icon: Check },
-    { value: 'cancelled', label: 'Class Missed', color: 'red', icon: X },
-    { value: "", label: 'No Entry', color: 'yellow', icon: AlertTriangle },
-  ];
+    if (hasClasses) {
+        if (classes.total_cancelled === 0) indicator = "bg-green-500";
+        else if (classes.total_held === 0) indicator = "bg-red-500";
+        else indicator = "bg-yellow-400";
+    }
 
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div
-        ref={statusModalRef}
-        className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md animate-scale-in"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-xl font-bold text-gray-800">Update Class Status</h3>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
-            <X className="w-6 h-6" />
-          </button>
-        </div>
-
-        <div className="mb-6">
-          <p className="text-gray-700 mb-2">
-            <span className="font-semibold">Subject:</span> {lecture.subject || 'N/A'}
-          </p>
-          <p className="text-gray-700">
-            <span className="font-semibold">Time:</span> {lecture.start_time}-{lecture.end_time}
-          </p>
-        </div>
-
-        <div className="space-y-3 mb-6">
-          {statusOptions.map((option) => (
-            <div
-              key={option.value}
-              onClick={(e) => {
-                e.stopPropagation();
-                setSelectedStatus(option.value);
-              }}
-              className={`flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer transition-all ${selectedStatus === option.value
-                  ? `border-${option.color}-500 bg-${option.color}-50`
-                  : 'border-gray-200 hover:bg-gray-50'
-                }`}
-            >
-              <option.icon className={`w-5 h-5 text-${option.color}-600`} />
-              <span className="font-medium">{option.label}</span>
+    return (
+        <div onClick={() => onClick(day)}
+            className={`p-2 border border-gray-200/80 cursor-pointer transition-all duration-300 ease-in-out transform hover:scale-105 hover:shadow-xl rounded-lg group ${isToday ? 'ring-2 ring-blue-500 shadow-lg' : ''} ${hasClasses ? 'bg-white' : 'bg-gray-50/50'}`}
+        >
+            <div className="flex flex-col items-center justify-center h-full min-h-[5rem]">
+                <span className={`text-lg font-bold ${isToday ? 'text-blue-600' : 'text-gray-800'}`}>{day.getDate()}</span>
+                <div className={`w-3 h-3 rounded-full mt-2 transition-all duration-300 group-hover:scale-125 ${indicator}`}></div>
             </div>
-          ))}
         </div>
-
-        <div className="flex justify-end gap-3">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onUpdate(lecture.lecture_id, lecture.date, selectedStatus);
-            }}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-          >
-            Update Status
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+    );
 });
+
+// Modal for updating attendance status
+const StatusModal = React.memo(({ lecture, onClose, onUpdate }) => {
+    const [selectedStatus, setSelectedStatus] = useState(lecture.status || 'held');
+
+    const statusOptions = [
+        { value: 'held', label: 'Class Taken (Present)', color: 'green', icon: Check },
+        { value: 'cancelled', label: 'Class Missed (Absent)', color: 'red', icon: X },
+    ];
+
+    return (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div
+                className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md animate-scale-in"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xl font-bold text-gray-800">Update Attendance Status</h3>
+                    <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+                        <X className="w-6 h-6" />
+                    </button>
+                </div>
+
+                <div className="mb-6">
+                    <p className="text-gray-700 mb-2">
+                        <span className="font-semibold">Subject:</span> {lecture.subject || 'N/A'}
+                    </p>
+                    <p className="text-gray-700">
+                        <span className="font-semibold">Time:</span> {formatTime(lecture.start_time)}-{formatTime(lecture.end_time)}
+                    </p>
+                </div>
+
+                <div className="space-y-3 mb-6">
+                    {statusOptions.map((option) => (
+                        <div
+                            key={option.value}
+                            onClick={() => setSelectedStatus(option.value)}
+                            className={`flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer transition-all ${selectedStatus === option.value
+                                ? `border-${option.color}-500 bg-${option.color}-50`
+                                : 'border-gray-200 hover:bg-gray-50'
+                                }`}
+                        >
+                            <option.icon className={`w-5 h-5 text-${option.color}-600`} />
+                            <span className="font-medium">{option.label}</span>
+                        </div>
+                    ))}
+                </div>
+
+                <div className="flex justify-end gap-3">
+                    <button
+                        onClick={onClose}
+                        className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        onClick={() => onUpdate(lecture, selectedStatus)}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                    >
+                        Update Status
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+});
+
 
 function ViewTimeTable() {
     const [currentDate, setCurrentDate] = useState(new Date());
@@ -126,11 +156,9 @@ function ViewTimeTable() {
     const [dayDetails, setDayDetails] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
-    const modalRef = useRef(null);
 
     const [showStatusModal, setShowStatusModal] = useState(false);
     const [selectedLecture, setSelectedLecture] = useState(null);
-    const statusModalRef = useRef(null);
 
     const [courses, setCourses] = useState([]);
     const [faculties, setFaculties] = useState([]);
@@ -147,28 +175,15 @@ function ViewTimeTable() {
         room: null,
     });
 
-    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api/v1';
-    const API_ENDPOINTS = {
-        GET_COURSE: `${API_BASE_URL}/course`,
-        GET_BATCH: `${API_BASE_URL}/batch`,
-        GET_FACULTY: `${API_BASE_URL}/faculty`,
-        GET_ROOM: `${API_BASE_URL}/room`,
-        CALENDAR: `${API_BASE_URL}/calendar`,
-        CALENDAR_DAY: `${API_BASE_URL}/calendar/day`,
-        SESSION: `${API_BASE_URL}/session`,
-    };
-
     const calendarCache = useRef({});
 
-    const fetchWithAuth = async (url, options = {}) => {
-        const headers = { 'Content-Type': 'application/json', ...options.headers };
-        const response = await fetch(url, { ...options, headers, credentials: 'include' });
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ error: response.statusText }));
-            throw new Error(`HTTP error! status: ${response.status} - ${errorData.error || 'Unknown error'}`);
-        }
-        const text = await response.text();
-        return text ? JSON.parse(text) : {};
+    // Helper to format date as YYYY-MM-DD without ambiguity
+    const toYYYYMMDD = (date) => {
+        if (!date) return '';
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
     };
 
     const fetchAllInitialData = async () => {
@@ -176,10 +191,10 @@ function ViewTimeTable() {
         setError(null);
         try {
             const [coursesData, batchesData, facultiesData, roomsData] = await Promise.all([
-                fetchWithAuth(API_ENDPOINTS.GET_COURSE),
-                fetchWithAuth(API_ENDPOINTS.GET_BATCH),
-                fetchWithAuth(API_ENDPOINTS.GET_FACULTY),
-                fetchWithAuth(API_ENDPOINTS.GET_ROOM),
+                backendService.get('/api/v1/course'),
+                backendService.get('/api/v1/batch'),
+                backendService.get('/api/v1/faculty'),
+                backendService.get('/api/v1/room'),
             ]);
             setCourses(coursesData || []);
             setBatches(batchesData || []);
@@ -199,41 +214,7 @@ function ViewTimeTable() {
         fetchAllInitialData();
     }, []);
 
-    useEffect(() => {
-        if (!initialLoading) {
-            const timer = setTimeout(() => {
-                fetchMonthSummary();
-            }, 300);
-            return () => clearTimeout(timer);
-        }
-    }, [currentDate, selectedFilters, initialLoading]);
-
-    useEffect(() => {
-        if (selectedDate && !initialLoading) {
-            const timer = setTimeout(() => {
-                fetchDayDetails(selectedDate);
-            }, 300);
-            return () => clearTimeout(timer);
-        }
-    }, [selectedDate, initialLoading]);
-
-    useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (showStatusModal && statusModalRef.current && !statusModalRef.current.contains(event.target)) {
-                if (modalRef.current && !modalRef.current.contains(event.target)) {
-                    closeStatusModal();
-                }
-            }
-        };
-
-        if (showStatusModal) {
-            document.addEventListener("mousedown", handleClickOutside);
-        }
-        return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, [showStatusModal]);
-
-
-    const fetchMonthSummary = async () => {
+    const fetchMonthSummary = useCallback(async () => {
         const month = currentDate.getMonth() + 1;
         const year = currentDate.getFullYear();
         const cacheKey = `${month}-${year}-${JSON.stringify(selectedFilters)}`;
@@ -263,8 +244,8 @@ function ViewTimeTable() {
                 }
             }
 
-            const response = await fetchWithAuth(`${API_ENDPOINTS.CALENDAR}?${params}`);
-            const summaryData = Array.isArray(response) ? response : (response.data || []);
+            const response = await backendService.get('/api/v1/calendar', params);
+            const summaryData = response.data || [];
             setMonthSummary(summaryData);
             calendarCache.current[cacheKey] = summaryData;
             setError(null);
@@ -275,12 +256,12 @@ function ViewTimeTable() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [currentDate, selectedFilters, courses, faculties]);
 
-    const fetchDayDetails = async (date) => {
+    const fetchDayDetails = useCallback(async (date) => {
         setLoading(true);
         try {
-            const dateStr = date.toISOString().split('T')[0];
+            const dateStr = toYYYYMMDD(date);
             const params = new URLSearchParams({ date: dateStr });
 
             if (selectedFilters.faculty) {
@@ -290,7 +271,7 @@ function ViewTimeTable() {
                 params.append('room', selectedFilters.room);
             } else if (selectedFilters.course && selectedFilters.batch && selectedFilters.semester) {
                 const selectedCourse = courses.find(c => c.Name === selectedFilters.course);
-                 const [yearStr, sectionName] = selectedFilters.batch.split('-');
+                const [yearStr, sectionName] = selectedFilters.batch.split('-');
                 if (selectedCourse) {
                     params.append('course_id', selectedCourse.ID);
                     params.append('year', yearStr);
@@ -298,9 +279,9 @@ function ViewTimeTable() {
                     params.append('semester', romanToInteger(selectedFilters.semester));
                 }
             }
-
-            const response = await fetchWithAuth(`${API_ENDPOINTS.CALENDAR_DAY}?${params}`);
-            setDayDetails(Array.isArray(response) ? response : (response.data || []));
+            const response = await backendService.get('/api/v1/calendar/day', params);
+            const dayData = response.data || [];
+            setDayDetails(dayData);
             setError(null);
         } catch (err) {
             console.error("Error fetching day details:", err);
@@ -309,18 +290,70 @@ function ViewTimeTable() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [selectedFilters, courses, faculties]);
 
-    const updateLectureStatus = async (lectureId, date, newStatus) => {
-        // This function needs to be adapted to your session update logic
-        console.log("Updating status for lecture:", lectureId, "on", date, "to", newStatus);
-        // Assuming you have a session update endpoint
+    useEffect(() => {
+        if (!initialLoading) {
+            fetchMonthSummary();
+        }
+    }, [currentDate, selectedFilters, initialLoading, fetchMonthSummary]);
+
+    const updateLectureStatus = async (lectureToUpdate, newStatus) => {
+        console.log("Updating lecture status:", { lectureToUpdate, newStatus });
+        closeStatusModal();
+        setLoading(true);
+        try {
+            // ✨ FIX: Construct a UTC timestamp string to satisfy the backend's parser.
+            // This prevents timezone conversion issues and ensures the correct date is sent
+            // in the format the server expects (RFC3339).
+            const dateStr = toYYYYMMDD(selectedDate);
+            const dateForPayload = `${dateStr}T00:00:00Z`;
+
+            const payload = {
+                TimetableID: lectureToUpdate.timetable_id,
+                TimeslotID: lectureToUpdate.timeslot_id,
+                Date: dateForPayload,
+                Status: newStatus,
+            };
+
+            const responseData = lectureToUpdate.session_id
+                ? await backendService.put(`/api/v1/session/${lectureToUpdate.session_id}`, payload)
+                : await backendService.post('/api/v1/session', payload);
+
+            console.log("Update response:", responseData);
+
+            const finalSessionState = {
+                ...lectureToUpdate,
+                status: responseData.Status,
+                session_id: responseData.ID,
+            };
+
+            setDayDetails(prevDetails =>
+                prevDetails.map(d =>
+                    (d.timetable_id === lectureToUpdate.timetable_id && d.timeslot_id === lectureToUpdate.timeslot_id)
+                        ? finalSessionState
+                        : d
+                )
+            );
+
+            // Clear the cache for the current month to force a refetch with updated data
+            const month = currentDate.getMonth() + 1;
+            const year = currentDate.getFullYear();
+            const cacheKey = `${month}-${year}-${JSON.stringify(selectedFilters)}`;
+            delete calendarCache.current[cacheKey];
+            await fetchMonthSummary();
+
+        } catch (err) {
+            console.error("Error updating attendance:", err);
+            setError(`Failed to update attendance: ${err.message || 'Please try again'}`);
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleFilterChange = (filterName, value) => {
         setSelectedFilters(prev => {
-            const newFilters = { ...prev };
-             if (filterName === 'course') {
+            if (filterName === 'course') {
                 return { course: value, batch: null, semester: null, faculty: null, room: null };
             }
             if (filterName === 'batch') {
@@ -332,8 +365,7 @@ function ViewTimeTable() {
             if (filterName === 'room') {
                 return { course: null, batch: null, semester: null, faculty: null, room: value };
             }
-            newFilters[filterName] = value;
-            return newFilters;
+            return { ...prev, [filterName]: value };
         });
     };
 
@@ -345,11 +377,11 @@ function ViewTimeTable() {
             .filter(batch => batch.CourseID === selectedCourse.ID)
             .flatMap(batch =>
                 Array.isArray(batch.Sections)
-                ? batch.Sections.map(section => ({
-                    value: `${batch.EntryYear}-${section.Name}`,
-                    label: `Batch ${batch.EntryYear} - Section ${section.Name}`
+                    ? batch.Sections.map(section => ({
+                        value: `${batch.EntryYear}-${section.Name}`,
+                        label: `Batch ${batch.EntryYear} - Section ${section.Name}`
                     }))
-                : []
+                    : []
             )
             .sort((a, b) => a.label.localeCompare(b.label));
     };
@@ -369,7 +401,7 @@ function ViewTimeTable() {
     };
 
     const handleStatusClick = useCallback((lecture) => {
-        setSelectedLecture({ ...lecture, date: selectedDate.toISOString().split('T')[0] });
+        setSelectedLecture({ ...lecture, date: toYYYYMMDD(selectedDate) });
         setShowStatusModal(true);
     }, [selectedDate]);
 
@@ -385,10 +417,7 @@ function ViewTimeTable() {
         const lastDay = new Date(year, month + 1, 0);
         const daysInMonth = lastDay.getDate();
         const startingDayOfWeek = firstDay.getDay();
-        const days = [];
-        for (let i = 0; i < startingDayOfWeek; i++) {
-            days.push(null);
-        }
+        const days = Array(startingDayOfWeek).fill(null);
         for (let day = 1; day <= daysInMonth; day++) {
             days.push(new Date(year, month, day));
         }
@@ -396,33 +425,28 @@ function ViewTimeTable() {
     }, []);
 
     const formatDateKey = useCallback((date) => {
-        const d = new Date(date);
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        return toYYYYMMDD(new Date(date));
     }, []);
 
     const getClassesForDate = useCallback((date) => {
         const dateKey = formatDateKey(date);
         const dateData = monthSummary.find((item) => item.date === dateKey);
-        if (!dateData) return { total_held: 0, total_cancelled: 0, no_data: 0 };
-        return {
-            total_held: dateData.total_held || 0,
-            total_cancelled: dateData.total_cancelled || 0,
-            no_data: dateData.no_data || 0,
-        };
+        return dateData || { total_held: 0, total_cancelled: 0, no_data: 0 };
     }, [monthSummary, formatDateKey]);
 
     const handleDateClick = useCallback((date) => {
         setSelectedDate(date);
         setShowModal(true);
-    }, []);
+        fetchDayDetails(date);
+    }, [fetchDayDetails]);
 
     const handlePrevMonth = useCallback(() => {
-        setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
-    }, [currentDate]);
+        setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+    }, []);
 
     const handleNextMonth = useCallback(() => {
-        setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
-    }, [currentDate]);
+        setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+    }, []);
 
     const closeModal = useCallback(() => {
         setShowModal(false);
@@ -440,6 +464,7 @@ function ViewTimeTable() {
     const days = useMemo(() => getDaysInMonth(currentDate), [currentDate, getDaysInMonth]);
     const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
     const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
 
     if (initialLoading) {
         return (
@@ -461,24 +486,21 @@ function ViewTimeTable() {
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
-                         <SearchableSelect
-                            label="Course"
+                        <SearchableSelect
                             value={selectedFilters.course}
                             options={courses.map(c => ({ value: c.Name, label: c.Name }))}
                             onSelect={(value) => handleFilterChange('course', value)}
                             placeholder="Filter by Course"
                             disabled={!!selectedFilters.faculty || !!selectedFilters.room}
                         />
-                         <SearchableSelect
-                            label="Batch"
+                        <SearchableSelect
                             value={selectedFilters.batch}
                             options={getFilteredBatches()}
                             onSelect={(value) => handleFilterChange('batch', value)}
                             placeholder="Filter by Batch"
                             disabled={!selectedFilters.course || !!selectedFilters.faculty || !!selectedFilters.room}
                         />
-                         <SearchableSelect
-                            label="Semester"
+                        <SearchableSelect
                             value={selectedFilters.semester}
                             options={semesters.map(s => ({ value: s.id, label: s.id }))}
                             onSelect={(value) => handleFilterChange('semester', value)}
@@ -495,7 +517,6 @@ function ViewTimeTable() {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                         <SearchableSelect
-                            label="Faculty"
                             value={selectedFilters.faculty}
                             options={faculties.map(f => ({ value: f.fullName, label: f.fullName }))}
                             onSelect={(value) => handleFilterChange('faculty', value)}
@@ -503,7 +524,6 @@ function ViewTimeTable() {
                             disabled={!!selectedFilters.course || !!selectedFilters.room}
                         />
                         <SearchableSelect
-                            label="Room"
                             value={selectedFilters.room}
                             options={rooms.map(r => ({ value: r.Name, label: r.Name }))}
                             onSelect={(value) => handleFilterChange('room', value)}
@@ -511,7 +531,6 @@ function ViewTimeTable() {
                             disabled={!!selectedFilters.course || !!selectedFilters.faculty}
                         />
                     </div>
-
 
                     <div className="flex items-center justify-between mb-6">
                         <button onClick={handlePrevMonth} className="p-2 hover:bg-gray-200 rounded-full transition-colors duration-300">
@@ -560,7 +579,7 @@ function ViewTimeTable() {
 
             {showModal && selectedDate && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={closeModal}>
-                    <div ref={modalRef} className="bg-gradient-to-br from-gray-50 to-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto transform transition-all duration-300 ease-in-out scale-95 animate-scale-in" onClick={(e) => e.stopPropagation()}>
+                    <div className="bg-gradient-to-br from-gray-50 to-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto transform transition-all duration-300 ease-in-out scale-95 animate-scale-in" onClick={(e) => e.stopPropagation()}>
                         <div className="p-6 border-b border-gray-200 sticky top-0 bg-white/80 backdrop-blur-sm z-10">
                             <div className="flex items-center justify-between">
                                 <h3 className="text-2xl font-bold text-gray-800">
@@ -591,7 +610,7 @@ function ViewTimeTable() {
                                                 <div className="flex items-center gap-2"><Users className="w-4 h-4 text-gray-500" /><span className="text-gray-600">Faculty:</span><span className="font-medium text-gray-800">{detail.faculty || 'N/A'}</span></div>
                                                 <div className="flex items-center gap-2"><BookOpen className="w-4 h-4 text-gray-500" /><span className="text-gray-600">Course:</span><span className="font-medium text-gray-800">{detail.course_name || 'N/A'}</span></div>
                                                 <div className="flex items-center gap-2"><BookOpen className="w-4 h-4 text-purple-500" /><span className="text-gray-600">Semester:</span><span className="font-medium text-gray-800">{detail.semester ? getSemesterDisplayName(detail.semester) : 'N/A'}</span></div>
-                                                <div className="flex items-center gap-2"><Clock className="w-4 h-4 text-blue-500" /><span className="text-gray-600">Time:</span><div className="font-medium text-gray-800">{detail.start_time && detail.end_time ? `${detail.start_time}-${detail.end_time}`: 'N/A'}</div></div>
+                                                <div className="flex items-center gap-2"><Clock className="w-4 h-4 text-blue-500" /><span className="text-gray-600">Time:</span><div className="font-medium text-gray-800">{detail.start_time && detail.end_time ? `${formatTime(detail.start_time)}-${formatTime(detail.end_time)}` : 'N/A'}</div></div>
                                                 <div className="flex items-center gap-2"><MapPin className="w-4 h-4 text-orange-500" /><span className="text-gray-600">Room:</span><div className="font-medium text-gray-800">{detail.room || 'N/A'}</div></div>
                                                 <div className="flex items-center gap-2"><Users className="w-4 h-4 text-indigo-500" /><span className="text-gray-600">Batch:</span><div className="font-medium text-gray-800">{`${detail.course_name || ''} ${detail.batch_year || ''} ${detail.batch_section || ''}`.trim() || 'N/A'}</div></div>
                                             </div>
